@@ -63,6 +63,7 @@
             top: 50px;
             left: 50%;
             transform: translateX(-50%);
+            color: transparent;
         }
     </style>
 </head>
@@ -72,7 +73,7 @@
         <source src="language_select.mp3" type="audio/mpeg">
         您的浏览器不支持 audio 元素。
     </audio>
-    <button id="record-btn">插卡(Card Insert)</button>
+    <button id="record-btn">Launch</button>
     <p id="customer"></p>
     <p id="ATM_teller"></p>
     <ul id="conversation-history"></ul>
@@ -87,7 +88,7 @@
             backgroundColor: 0xffffff
         });
         const live2d = PIXI.live2d;
-        const cubism4Model = "./assets/March 7th/March 7th.model3.json";
+        const cubism4Model = "./assets/haru/haru_greeter_t03.model3.json";
         let model4;
 
         (async function loadModel() {
@@ -174,6 +175,26 @@
                 })
                 .catch(error => console.error('权限获取失败', error));
         });
+        function talk(model, audio) {
+            var audioElement = new Audio(audio);
+            audioElement.play();
+            var audio_link = audio;  //[Optional arg, can be null or empty] [relative or full url path] [mp3 or wav file] "./Keira.wav"
+            var volume = 1; // [Optional arg, can be null or empty] [0.0 - 1.0]
+            var expression = 8; // [Optional arg, can be null or empty] [index|name of expression]
+            var resetExpression = true; // [Optional arg, can be null or empty] [true|false] [default: true] [if true, expression will be reset to default after animation is over]
+            var crossOrigin = "anonymous"; // [Optional arg, to use not same-origin audios] [DEFAULT: null]
+    
+            model.speak(audio_link, {
+                volume: volume,
+                expression: expression,
+                resetExpression: resetExpression,
+                crossOrigin: crossOrigin
+            })
+            model.speak(audio_link)
+            model.speak(audio_link, {volume: volume})
+            model.speak(audio_link, {expression: expression, resetExpression: resetExpression})
+    
+        }
     </script>
 </body>
 </html>
