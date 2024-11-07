@@ -27,9 +27,9 @@
 
 <script type="text/javascript">
     // 数字人模型
-    const cubism4Model = "./assets/kei_vowels_pro/kei_vowels_pro.model3.json";
+    // const cubism4Model = "./assets/kei_vowels_pro/kei_vowels_pro.model3.json";
     // const cubism4Model = "./assets/Hiyori/Hiyori.model3.json";
-    // const cubism4Model = "./assets/March 7th/March 7th.model3.json";
+     const cubism4Model = "./assets/March 7th/March 7th.model3.json";
     // const cubism4Model = "./assets/haru/haru_greeter_t03.model3.json";
 
 
@@ -76,24 +76,27 @@
 
 
         $("#play").click(function () {
-            talk(model4, "./demo.mp3");
+            talk(model4, "language_select.mp3");
         });
 
         $("#start").click(function () {
-            console.log($("#text").val());
             let text = $("#text").val().trim();
             if (text == "") {
                 alert("请输入内容");
                 return false;
             }
             $("#start").prop("disabled", true);
-            axios.get("http://127.0.0.1:2020/dealAudio?file_name=test.mp3&voice=xiaoxiao&text=" + text)
-                .then(response => {
-                    console.log(response.data);
-                    const audioUrl = response.data + "?v=" + new Date().getTime();
+            axios.post("http://127.0.0.1:5001/process_audio", { audio: text })
+            .then(response => {
+                const audioData = response.data.audio;
+                if (audioData) {
+                    const audioUrl = "data:audio/mp3;base64," + audioData;
                     talk(model4, audioUrl);
-                    $("#start").prop("disabled", false);
-                })
+                } else {
+                    alert(response.data.text); // 显示错误或者提示信息
+                }
+                $("#start").prop("disabled", false);
+            })
                 .catch(error => {
                     console.error('请求接口失败:', error);
                     $("#start").prop("disabled", false);
@@ -105,6 +108,8 @@
 
 
     function talk(model, audio) {
+        var audioElement = new Audio(audio);
+        audioElement.play();
         var audio_link = audio;  //[Optional arg, can be null or empty] [relative or full url path] [mp3 or wav file] "./Keira.wav"
         var volume = 1; // [Optional arg, can be null or empty] [0.0 - 1.0]
         var expression = 8; // [Optional arg, can be null or empty] [index|name of expression]

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>录音并处理与Live2D交互</title>
+    <script src="./js/live2dcubismcore.min.js"></script>
+    <script src="./js/live2d.min.js"></script>
+    <script src="./js/pixi.min.js"></script>
+    <script src="./js/cubism4.min.js"></script>
+    <script src="./js/jquery-3.1.1.min.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        #record-btn {
+            position: fixed;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        #recording-indicator, #processing-indicator {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            display: none;
+        }
+        #recording-indicator { color: red; }
+        #processing-indicator { color: blue; }
+        #customer, #ATM_teller {
+            position: fixed;
+            top: 10px;
+            margin-bottom: 20px;
+        }
+        #customer { right: 10px; color: #006400; }
+        #ATM_teller { left: 10px; color: #8b0000; }
+        #conversation-history {
+            list-style-type: none;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 60px;
+            padding: 0;
+        }
+        #conversation-history li {
+            clear: both;
+            max-width: 70%;
+            width: max-content;
+            margin-bottom: 5px;
+            padding: 8px;
+            border-radius: 10px;
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+            margin-top: 10px;
+        }
+        #conversation-history li:nth-child(odd) {
+            float: right;
+            background-color: #90EE90;
+            color: #000000;
+        }
+        #conversation-history li:nth-child(even) {
+            float: left;
+            background-color: #FFF8DC;
+            color: #000000;
+        }
+        canvas {
+            position: fixed;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="800" height="600"></canvas>
+    <audio id="language_select">
+        <source src="language_select.mp3" type="audio/mpeg">
+        您的浏览器不支持 audio 元素。
+    </audio>
+    <button id="record-btn">插卡(Card Insert)</button>
+    <p id="customer"></p>
+    <p id="ATM_teller"></p>
+    <ul id="conversation-history"></ul>
+    <p id="recording-indicator">正在录音...(recording)</p>
+    <p id="processing-indicator">正在处理...(processing)</p>
+    <audio id="audio"></audio>
+    <script type="text/javascript">
+        const app = new PIXI.Application({
+            view: document.getElementById("canvas"),
+            autoStart: true,
+            resizeTo: window,
+            backgroundColor: 0xffffff
+        });
+        const live2d = PIXI.live2d;
+        const cubism4Model = "./assets/March 7th/March 7th.model3.json";
+        let model4;
+
+        (async function loadModel() {
+            model4 = await live2d.Live2DModel.from(cubism4Model);
+            app.stage.addChild(model4);
+            model4.scale.set(0.2);
+            model4.x = (app.screen.width - model4.width * model4.scale.x) / 2;
+            model4.y = (app.screen.height - model4.height * model4.scale.y) / 2;
+        })();
+
+        const recordBtn = document.getElementById('record-btn');
+        const audioElement = document.getElementById('audio');
+        const customerElement = document.getElementById('customer');
+        const ATM_tellerElement = document.getElementById('ATM_teller');
+        const recordingIndicator = document.getElementById('recording-indicator');
+        const language_select = document.getElementById('language_select');
+        const processingIndicator = document.getElementById('processing-indicator');
+        const conversationHistoryElement = document.getElementById('conversation-history');
+
+        recordBtn.addEventListener('click', () => {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('浏览器不支持 mediaDevices API，请使用支持的浏览器或检查浏览器设置。');
+                return;
+            }
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => {
+                    const mediaRecorder = new MediaRecorder(stream);
+                    let audioChunks = [];
+
+                    mediaRecorder.ondataavailable = e => {
+                        audioChunks.push(e.data);
+                    };
+
+                    mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(audioChunks);
+                        const formData = new FormData();
+                        formData.append('audio', audioBlob);
+
+                        fetch('http://127.0.0.1:5001/process_audio', {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            const audioBase64 = data.audio;
+                            const audioBytes = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+                            const audioBlob = new Blob([audioBytes], { type: 'audio/mp3' });
+                            const audioUrl = URL.createObjectURL(audioBlob);
+                            audioElement.src = audioUrl;
+                            audioElement.play();
+                            audioElement.onplay = () => {
+                                if (model4) model4.motion('TapBody');
+                            };
+
+                            customerElement.textContent = 'Customer';
+                            ATM_tellerElement.textContent = 'AI-Teller';
+                            conversationHistoryElement.innerHTML = '';
+                            data.conversation_history.forEach(item => {
+                                const listItem = document.createElement('li');
+                                listItem.textContent = item;
+                                conversationHistoryElement.appendChild(listItem);
+                            });
+                            conversationHistoryElement.scrollTop = conversationHistoryElement.scrollHeight;
+                        });
+
+                        audioChunks = [];
+                    };
+
+                    language_select.play();
+                    language_select.onended = () => {
+                        mediaRecorder.start();
+                        recordingIndicator.style.display = 'block';
+                        setTimeout(() => {
+                            mediaRecorder.stop();
+                            recordingIndicator.style.display = 'none';
+                            setTimeout(() => {
+                                processingIndicator.style.display = 'block';
+                                setTimeout(() => {
+                                    processingIndicator.style.display = 'none';
+                                }, 3000);
+                            }, 2000);
+                        }, 5000);
+                    };
+                })
+                .catch(error => console.error('权限获取失败', error));
+        });
+    </script>
+</body>
+</html>
