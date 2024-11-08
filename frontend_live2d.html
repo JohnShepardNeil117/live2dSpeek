@@ -258,7 +258,7 @@
             var audio_link = audio;  //[Optional arg, can be null or empty] [relative or full url path] [mp3 or wav file] "./Keira.wav"
             var volume = 0.1; // [Optional arg, can be null or empty] [0.0 - 1.0]
             var expression = 8; // [Optional arg, can be null or empty] [index|name of expression]
-            var resetExpression = true; // [Optional arg, can be null or empty] [true|false] [default: true] [if true, expression will be reset to default after animation is over]
+            var resetExpression = false; // [Optional arg, can be null or empty] [true|false] [default: true] [if true, expression will be reset to default after animation is over]
             var crossOrigin = "anonymous"; // [Optional arg, to use not same-origin audios] [DEFAULT: null]
     
             model.speak(audio_link, {
