@@ -10,33 +10,46 @@
     <script src="./js/jquery-3.1.1.min.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
         #record-btn {
-            position: fixed;
+            position: absolute;
             bottom: 10px;
             left: 50%;
             transform: translateX(-50%);
+            z-index: 2;
         }
         #recording-indicator, #processing-indicator {
-            position: fixed;
+            position: absolute;
             bottom: 10px;
             left: 10px;
             display: none;
         }
-        #recording-indicator { color: red; }
-        #processing-indicator { color: blue; }
+        #recording-indicator { color: red; z-index: 2; }
+        #processing-indicator { color: blue; z-index: 2; }
         #customer, #ATM_teller {
-            position: fixed;
+            position: absolute;
             top: 10px;
             margin-bottom: 20px;
+            z-index: 2;
         }
-        #customer { right: 10px; color: #006400; }
-        #ATM_teller { left: 10px; color: #8b0000; }
+        #customer { right: 10px; color: #006400; z-index: 2; }
+        #ATM_teller { left: 10px; color: #8b0000; z-index: 2; }
         #conversation-history {
             list-style-type: none;
-            max-height: 300px;
+            max-height: 600px;
             overflow-y: auto;
             margin-top: 60px;
             padding: 0;
+            z-index: 2;
         }
         #conversation-history li {
             clear: both;
@@ -47,38 +60,77 @@
             border-radius: 10px;
             box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
             margin-top: 10px;
+            z-index: 2;
+            position: relative;
         }
         #conversation-history li:nth-child(odd) {
             float: right;
             background-color: #90EE90;
             color: #000000;
+            z-index: 2;
         }
         #conversation-history li:nth-child(even) {
             float: left;
             background-color: #FFF8DC;
             color: #000000;
+            z-index: 2;
         }
-        canvas {
-            position: fixed;
-            top: 50px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: transparent;
+        .container {
+            position: relative;
+            height: 100vh; /* 使用视口高度，确保容器填满整个屏幕 */
+        }
+        
+        .chat-container {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 66.67%; /* 占据左侧三分之二 */
+            height: 100%; /* 充满整个容器的高度 */
+            overflow-y: auto;
+            padding: 10px;
+            box-shadow: 5px 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 2;
+        }
+        
+        .live2d-container {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 33.33%; /* 占据右侧三分之一 */
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            z-index: 1;
+        }
+        .live2d-container canvas {
+            width: 1000px;
+            height: 500px;
+            max-width: 190%; /* 确保 canvas 不超出其容器 */
+            max-height: 100%; /* 确保 canvas 不超出其容器 */
+            position: relative; /* 相对定位 */
+            z-index: 1;
         }
     </style>
 </head>
 <body>
-    <canvas id="canvas" width="800" height="600"></canvas>
+    <div class="container">
+        <div class="chat-container">
+            <p id="customer"></p>
+            <p id="ATM_teller"></p>
+            <ul id="conversation-history"></ul>
+            <button id="record-btn">Launch</button>
+            <p id="recording-indicator">Recording...</p>
+            <p id="processing-indicator">Processing...</p>
+        </div>
+        <div class="live2d-container">
+            <canvas id="canvas" width="1200" height="1600"></canvas>
+        </div>
+    </div>
     <audio id="language_select">
-        <source src="language_select.mp3" type="audio/mpeg">
-        您的浏览器不支持 audio 元素。
+    <source src="language_select.mp3" type="audio/mpeg">
+    您的浏览器不支持 audio 元素。
     </audio>
-    <button id="record-btn">Launch</button>
-    <p id="customer"></p>
-    <p id="ATM_teller"></p>
-    <ul id="conversation-history"></ul>
-    <p id="recording-indicator">正在录音...(recording)</p>
-    <p id="processing-indicator">正在处理...(processing)</p>
     <audio id="audio"></audio>
     <script type="text/javascript">
         const app = new PIXI.Application({
@@ -88,15 +140,18 @@
             backgroundColor: 0xffffff
         });
         const live2d = PIXI.live2d;
-        const cubism4Model = "./assets/haru/haru_greeter_t03.model3.json";
+        const cubism4Model = "./assets/haru/haru_greeter_t03.model4.json";
         let model4;
 
         (async function loadModel() {
             model4 = await live2d.Live2DModel.from(cubism4Model);
             app.stage.addChild(model4);
-            model4.scale.set(0.2);
-            model4.x = (app.screen.width - model4.width * model4.scale.x) / 2;
-            model4.y = (app.screen.height - model4.height * model4.scale.y) / 2;
+            const scale = 0.75;  // 增加这个值来放大模型
+            model4.scale.set(scale);
+        
+            // 计算模型居中位置
+            model4.x = (app.screen.width - model4.internalModel.originalWidth * scale) / 4;
+            model4.y = (app.screen.height - model4.internalModel.originalHeight * scale) / 16;
         })();
 
         const recordBtn = document.getElementById('record-btn');
@@ -127,7 +182,7 @@
                         const formData = new FormData();
                         formData.append('audio', audioBlob);
 
-                        fetch('http://127.0.0.1:5001/process_audio', {
+                        fetch('http://localhost:5000/process_audio', {
                             method: 'POST',
                             body: formData
                         })
@@ -141,23 +196,47 @@
                             audioElement.play();
                             audioElement.onplay = () => {
                                 if (model4) model4.motion('TapBody');
+                                talk(model4, audioUrl);
                             };
 
+                            const historyList = document.getElementById('conversation-history');
+                            historyList.innerHTML = '';
                             customerElement.textContent = 'Customer';
-                            ATM_tellerElement.textContent = 'AI-Teller';
-                            conversationHistoryElement.innerHTML = '';
+                            ATM_tellerElement.textContent = 'AI-Agent';
                             data.conversation_history.forEach(item => {
                                 const listItem = document.createElement('li');
                                 listItem.textContent = item;
-                                conversationHistoryElement.appendChild(listItem);
+                                historyList.appendChild(listItem);
                             });
-                            conversationHistoryElement.scrollTop = conversationHistoryElement.scrollHeight;
+                            historyList.scrollTop = historyList.scrollHeight;
+                            // 监听返回的音频播放结束事件
+                            audioElement.onended = () => {
+                                audioChunks = [];  // 清空之前的音频块
+                                mediaRecorder.start();  // 重新开始录音
+                                recordingIndicator.style.display = 'block';
+                                setTimeout(() => {
+                                    mediaRecorder.stop();
+                                    recordingIndicator.style.display = 'none';
+                                    setTimeout(() => {
+                                        processingIndicator.style.display = 'block';
+                                        setTimeout(() => {
+                                            processingIndicator.style.display = 'none';
+                                        }, 3000);
+                                    }, 2000);
+                                }, 5000); // 自动停止录音
+                            };
                         });
 
                         audioChunks = [];
                     };
 
                     language_select.play();
+                    language_select.onplay = () => {
+                        if (model4) {
+                            model4.motion('TapBody');
+                            talk(model4, "language_select.mp3");
+                        }
+                    };
                     language_select.onended = () => {
                         mediaRecorder.start();
                         recordingIndicator.style.display = 'block';
@@ -176,10 +255,8 @@
                 .catch(error => console.error('权限获取失败', error));
         });
         function talk(model, audio) {
-            var audioElement = new Audio(audio);
-            audioElement.play();
             var audio_link = audio;  //[Optional arg, can be null or empty] [relative or full url path] [mp3 or wav file] "./Keira.wav"
-            var volume = 1; // [Optional arg, can be null or empty] [0.0 - 1.0]
+            var volume = 0.1; // [Optional arg, can be null or empty] [0.0 - 1.0]
             var expression = 8; // [Optional arg, can be null or empty] [index|name of expression]
             var resetExpression = true; // [Optional arg, can be null or empty] [true|false] [default: true] [if true, expression will be reset to default after animation is over]
             var crossOrigin = "anonymous"; // [Optional arg, to use not same-origin audios] [DEFAULT: null]
@@ -190,10 +267,6 @@
                 resetExpression: resetExpression,
                 crossOrigin: crossOrigin
             })
-            model.speak(audio_link)
-            model.speak(audio_link, {volume: volume})
-            model.speak(audio_link, {expression: expression, resetExpression: resetExpression})
-    
         }
     </script>
 </body>

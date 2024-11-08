@@ -7,7 +7,6 @@
       "haru_greeter_t03.2048/texture_01.png"
     ],
     "Physics": "haru_greeter_t03.physics3.json",
-    "Pose": "haru_greeter_t03.pose3.json",
     "DisplayInfo": "haru_greeter_t03.cdi3.json",
     "Expressions": [
       {
@@ -43,30 +42,6 @@
         "File": "expressions/F08.exp3.json"
       }
     ],
-    "Motions": {
-      "Idle": [
-        {
-          "File": "motion/haru_g_idle.motion3.json"
-        },
-        {
-          "File": "motion/haru_g_m07.motion3.json"
-        },
-        {
-          "File": "motion/haru_g_m15.motion3.json"
-        }
-      ],
-      "Tap": [
-        {
-          "File": "motion/haru_g_m14.motion3.json",
-          "Sound": "../shizuku/sounds/flickHead_00.mp3"
-        },
-        {
-          "File": "motion/haru_g_m05.motion3.json",
-          "Sound": "../shizuku/sounds/flickHead_01.mp3"
-        }
-      ]
-    }
-  },
   "Groups": [
     {
       "Target": "Parameter",
@@ -82,16 +57,7 @@
       "Ids": [
         "ParamMouthOpenY"
       ]
-    }
-  ],
-  "HitAreas": [
-    {
-      "Id": "HitArea",
-      "Name": "Head"
-    },
-    {
-      "Id": "HitArea2",
-      "Name": "Body"
-    }
-  ]
+      }
+    ]
+  }
 }
