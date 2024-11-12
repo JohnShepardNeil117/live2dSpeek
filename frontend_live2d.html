@@ -140,7 +140,7 @@
             backgroundColor: 0xffffff
         });
         const live2d = PIXI.live2d;
-        const cubism4Model = "./assets/haru/haru_greeter_t03.model4.json";
+        const cubism4Model = "assets/haru/haru_greeter_t03.model4.json";
         let model4;
 
         (async function loadModel() {
@@ -151,7 +151,7 @@
         
             // 计算模型居中位置
             model4.x = (app.screen.width - model4.internalModel.originalWidth * scale) / 4;
-            model4.y = (app.screen.height - model4.internalModel.originalHeight * scale) / 16;
+            model4.y = (app.screen.height - model4.internalModel.originalHeight * scale) / 36;
         })();
 
         const recordBtn = document.getElementById('record-btn');
@@ -181,55 +181,56 @@
                         const audioBlob = new Blob(audioChunks);
                         const formData = new FormData();
                         formData.append('audio', audioBlob);
-
-                        fetch('http://localhost:5000/process_audio', {
-                            method: 'POST',
+                    
+                        // 现在发送包含音频的请求
+                            fetch('http://localhost:5001/process_audio', {
+                                method: 'POST',
                             body: formData
                         })
                         .then(response => response.json())
                         .then(data => {
-                            const audioBase64 = data.audio;
-                            const audioBytes = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
-                            const audioBlob = new Blob([audioBytes], { type: 'audio/mp3' });
-                            const audioUrl = URL.createObjectURL(audioBlob);
-                            audioElement.src = audioUrl;
-                            audioElement.play();
-                            audioElement.onplay = () => {
-                                if (model4) model4.motion('TapBody');
-                                talk(model4, audioUrl);
-                            };
-
-                            const historyList = document.getElementById('conversation-history');
-                            historyList.innerHTML = '';
-                            customerElement.textContent = 'Customer';
-                            ATM_tellerElement.textContent = 'AI-Agent';
-                            data.conversation_history.forEach(item => {
-                                const listItem = document.createElement('li');
-                                listItem.textContent = item;
-                                historyList.appendChild(listItem);
-                            });
-                            historyList.scrollTop = historyList.scrollHeight;
-                            // 监听返回的音频播放结束事件
-                            audioElement.onended = () => {
-                                audioChunks = [];  // 清空之前的音频块
-                                mediaRecorder.start();  // 重新开始录音
-                                recordingIndicator.style.display = 'block';
-                                setTimeout(() => {
-                                    mediaRecorder.stop();
-                                    recordingIndicator.style.display = 'none';
+                                const audioBase64 = data.audio_64;
+                                const audioBytes = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+                                const audioBlob = new Blob([audioBytes], { type: 'audio/mp3' });
+                                const audioUrl = URL.createObjectURL(audioBlob);
+                                audioElement.src = audioUrl;
+                                audioElement.volume = 0;
+                                audioElement.play();
+                                audioElement.onplay = () => {
+                                    talk(model4, audioUrl);
+                                };
+                    
+                                const historyList = document.getElementById('conversation-history');
+                                historyList.innerHTML = '';
+                                customerElement.textContent = 'Customer';
+                                ATM_tellerElement.textContent = 'AI-Agent';
+                                data.conversation_history.forEach(item => {
+                                    const listItem = document.createElement('li');
+                                    listItem.textContent = item;
+                                    historyList.appendChild(listItem);
+                                });
+                                historyList.scrollTop = historyList.scrollHeight;
+                                audioElement.onended = () => {
+                                    audioChunks = [];
+                                    mediaRecorder.start();
+                                    recordingIndicator.style.display = 'block';
                                     setTimeout(() => {
-                                        processingIndicator.style.display = 'block';
+                                        mediaRecorder.stop();
+                                        recordingIndicator.style.display = 'none';
                                         setTimeout(() => {
-                                            processingIndicator.style.display = 'none';
-                                        }, 3000);
-                                    }, 2000);
-                                }, 5000); // 自动停止录音
-                            };
-                        });
-
+                                            processingIndicator.style.display = 'block';
+                                            setTimeout(() => {
+                                                processingIndicator.style.display = 'none';
+                                            }, 3000);
+                                        }, 2000);
+                                    }, 5000);
+                                };
+                            })
+                            .catch(error => console.error('处理音频请求失败', error));
+                    
                         audioChunks = [];
                     };
-
+                    language_select.volume = 0;
                     language_select.play();
                     language_select.onplay = () => {
                         if (model4) {
@@ -256,7 +257,7 @@
         });
         function talk(model, audio) {
             var audio_link = audio;  //[Optional arg, can be null or empty] [relative or full url path] [mp3 or wav file] "./Keira.wav"
-            var volume = 0.1; // [Optional arg, can be null or empty] [0.0 - 1.0]
+            var volume = 1; // [Optional arg, can be null or empty] [0.0 - 1.0]
             var expression = 8; // [Optional arg, can be null or empty] [index|name of expression]
             var resetExpression = false; // [Optional arg, can be null or empty] [true|false] [default: true] [if true, expression will be reset to default after animation is over]
             var crossOrigin = "anonymous"; // [Optional arg, to use not same-origin audios] [DEFAULT: null]

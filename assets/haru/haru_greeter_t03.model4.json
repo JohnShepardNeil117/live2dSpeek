@@ -8,6 +8,7 @@
     ],
     "Physics": "haru_greeter_t03.physics3.json",
     "DisplayInfo": "haru_greeter_t03.cdi3.json",
+    "MotionSync": "kei_vowels_pro.motionsync3.json",
     "Expressions": [
       {
         "Name": "f00",
@@ -50,14 +51,7 @@
         "ParamEyeLOpen",
         "ParamEyeROpen"
       ]
-    },
-    {
-      "Target": "Parameter",
-      "Name": "LipSync",
-      "Ids": [
-        "ParamMouthOpenY"
-      ]
-      }
+    }
     ]
   }
 }

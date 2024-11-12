@@ -29,8 +29,8 @@
     // 数字人模型
     // const cubism4Model = "./assets/kei_vowels_pro/kei_vowels_pro.model3.json";
     // const cubism4Model = "./assets/Hiyori/Hiyori.model3.json";
-     const cubism4Model = "./assets/March 7th/March 7th.model3.json";
-    // const cubism4Model = "./assets/haru/haru_greeter_t03.model3.json";
+    // const cubism4Model = "./assets/March 7th/March 7th.model3.json";
+     const cubism4Model = "./assets/haru/haru_greeter_t03.model4.json";
 
 
     const live2d = PIXI.live2d;
@@ -53,7 +53,7 @@
             const scaleY = (innerHeight) / model.height;
 
             // fit the window
-            model.scale.set(Math.min(scaleX, scaleY));
+            model.scale.set(0.4);
             model.y = innerHeight * 0.1;
             draggable(model);
         });
