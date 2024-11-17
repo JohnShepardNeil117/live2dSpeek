@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>录音并处理与Live2D交互</title>
+    <script src="./js/live2dcubismcore.min.js"></script>
+    <script src="./js/live2d.min.js"></script>
+    <script src="./js/pixi.min.js"></script>
+    <script src="./js/cubism4.min.js"></script>
+    <script src="./js/jquery-3.1.1.min.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #record-btn {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2;
+        }
+        #recording-indicator, #processing-indicator {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            display: none;
+        }
+        #recording-indicator { color: red; z-index: 2; }
+        #processing-indicator { color: blue; z-index: 2; }
+        #customer, #ATM_teller {
+            position: absolute;
+            top: 10px;
+            margin-bottom: 20px;
+            z-index: 2;
+        }
+        #customer { right: 10px; color: #006400; z-index: 2; }
+        #ATM_teller { left: 10px; color: #8b0000; z-index: 2; }
+        #conversation-history {
+            list-style-type: none;
+            max-height: 600px;
+            overflow-y: auto;
+            margin-top: 60px;
+            padding: 0;
+            z-index: 2;
+        }
+        #conversation-history li {
+            clear: both;
+            max-width: 70%;
+            width: max-content;
+            margin-bottom: 5px;
+            padding: 8px;
+            border-radius: 10px;
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+            margin-top: 10px;
+            z-index: 2;
+            position: relative;
+        }
+        #conversation-history li:nth-child(odd) {
+            float: right;
+            background-color: #90EE90;
+            color: #000000;
+            z-index: 2;
+        }
+        #conversation-history li:nth-child(even) {
+            float: left;
+            background-color: #FFF8DC;
+            color: #000000;
+            z-index: 2;
+        }
+        .container {
+            position: relative;
+            height: 100vh; /* 使用视口高度，确保容器填满整个屏幕 */
+        }
+        
+        .chat-container {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 66.67%; /* 占据左侧三分之二 */
+            height: 100%; /* 充满整个容器的高度 */
+            overflow-y: auto;
+            padding: 10px;
+            box-shadow: 5px 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 2;
+        }
+        
+        .live2d-container {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 33.33%; /* 占据右侧三分之一 */
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            z-index: 1;
+        }
+        .live2d-container canvas {
+            width: 1000px;
+            height: 500px;
+            max-width: 190%; /* 确保 canvas 不超出其容器 */
+            max-height: 100%; /* 确保 canvas 不超出其容器 */
+            position: relative; /* 相对定位 */
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="chat-container">
+            <p id="customer"></p>
+            <p id="ATM_teller"></p>
+            <ul id="conversation-history"></ul>
+            <button id="record-btn">Launch</button>
+            <p id="recording-indicator">Recording...</p>
+            <p id="processing-indicator">Processing...</p>
+        </div>
+        <div class="live2d-container">
+            <canvas id="canvas" width="1200" height="1600"></canvas>
+        </div>
+    </div>
+    <audio id="language_select">
+    <source src="language_select.mp3" type="audio/mpeg">
+    您的浏览器不支持 audio 元素。
+    </audio>
+    <audio id="audio"></audio>
+    <script type="text/javascript">
+        const app = new PIXI.Application({
+            view: document.getElementById("canvas"),
+            autoStart: true,
+            resizeTo: window,
+            backgroundColor: 0xffffff
+        });
+        const live2d = PIXI.live2d;
+        const cubism4Model = "assets/haru/haru_greeter_t03.model4.json";
+        let model4;
+    
+        (async function loadModel() {
+            model4 = await live2d.Live2DModel.from(cubism4Model);
+            app.stage.addChild(model4);
+            const scale = 0.75;  // 增加这个值来放大模型
+            model4.scale.set(scale);
+        
+            // 计算模型居中位置
+            model4.x = (app.screen.width - model4.internalModel.originalWidth * scale) / 4;
+            model4.y = (app.screen.height - model4.internalModel.originalHeight * scale) / 36;
+        })();
+    
+        const socket = io('http://localhost:5001');
+        const recordBtn = document.getElementById('record-btn');
+        const audioElement = document.getElementById('audio');
+        const customerElement = document.getElementById('customer');
+        const ATM_tellerElement = document.getElementById('ATM_teller');
+        const recordingIndicator = document.getElementById('recording-indicator');
+        const language_select = document.getElementById('language_select');
+        const processingIndicator = document.getElementById('processing-indicator');
+        const conversationHistoryElement = document.getElementById('conversation-history');
+    
+        recordBtn.addEventListener('click', async () => {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('浏览器不支持 mediaDevices API，请使用支持的浏览器或检查浏览器设置。');
+                return;
+            }
+    
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const mediaRecorder = new MediaRecorder(stream);
+                let audioChunks = [];
+    
+                mediaRecorder.ondataavailable = e => {
+                    audioChunks.push(e.data);
+                };
+    
+                mediaRecorder.start();
+                await new Promise(resolve => mediaRecorder.onstop = resolve);
+                const audioBlob = new Blob(audioChunks);
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = () => {
+                    const base64Audio = reader.result.split(',')[1];
+                    socket.emit('process_audio', { audio: base64Audio });
+                };
+    
+                // 清理
+                stream.getTracks().forEach(track => track.stop());
+            } catch (error) {
+                console.error('录音或发送失败:', error);
+                alert('录音或发送失败，请检查控制台了解详情。');
+            }
+        });
+    
+        socket.on('response', function(data) {
+            const audioBase64 = data.audio_64;
+            const audioBytes = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+            const audioBlob = new Blob([audioBytes], { type: 'audio/mp3' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            audioElement.src = audioUrl;
+            audioElement.volume = 0;
+            audioElement.play();
+            audioElement.onplay = () => {
+                talk(model4, audioUrl);
+            };
+    
+            const historyList = document.getElementById('conversation-history');
+            historyList.innerHTML = '';
+            customerElement.textContent = 'Customer';
+            ATM_tellerElement.textContent = 'AI-Agent';
+            data.conversation_history.forEach(item => {
+                const listItem = document.createElement('li');
+                listItem.textContent = item;
+                historyList.appendChild(listItem);
+            });
+            historyList.scrollTop = historyList.scrollHeight;
+            audioElement.onended = () => {
+                recordingIndicator.style.display = 'block';
+                setTimeout(() => {
+                    recordingIndicator.style.display = 'none';
+                    setTimeout(() => {
+                        processingIndicator.style.display = 'block';
+                        setTimeout(() => {
+                            processingIndicator.style.display = 'none';
+                        }, 3000);
+                    }, 2000);
+                }, 5000);
+            };
+        });
+    
+        function talk(model, audio) {
+            var audio_link = audio;
+            var volume = 1;
+            var expression = 8;
+            var resetExpression = false;
+            var crossOrigin = "anonymous";
+    
+            model.speak(audio_link, {
+                volume: volume,
+                expression: expression,
+                resetExpression: resetExpression,
+                crossOrigin: crossOrigin
+            });
+        }
+    </script>
+</body>
+</html>
