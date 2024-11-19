@@ -171,8 +171,8 @@
                 return;
             }
     
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
                 const mediaRecorder = new MediaRecorder(stream);
                 let audioChunks = [];
     
@@ -180,60 +180,84 @@
                     audioChunks.push(e.data);
                 };
     
-                mediaRecorder.start();
-                await new Promise(resolve => mediaRecorder.onstop = resolve);
-                const audioBlob = new Blob(audioChunks);
-                const reader = new FileReader();
-                reader.readAsDataURL(audioBlob);
-                reader.onloadend = () => {
-                    const base64Audio = reader.result.split(',')[1];
-                    socket.emit('process_audio', { audio: base64Audio });
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks);
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = () => {
+                        const base64Audio = reader.result.split(',')[1];
+                        socket.emit('process_audio', { audio: base64Audio });
+                    };
+
+                    socket.on('response', function(data) {
+                        try {
+                            const audioBase64 = data.audio_64;
+                            const audioBytes = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+                            const audioBlob = new Blob([audioBytes], { type: 'audio/mp3' });
+                            const audioUrl = URL.createObjectURL(audioBlob);
+                            audioElement.src = audioUrl;
+                            audioElement.volume = 0;
+                            audioElement.play();
+                            audioElement.onplay = () => {
+                                talk(model4, audioUrl);
+                        
+                
+                            const historyList = document.getElementById('conversation-history');
+                            historyList.innerHTML = '';
+                            customerElement.textContent = 'Customer';
+                            ATM_tellerElement.textContent = 'AI-Agent';
+                            data.conversation_history.forEach(item => {
+                                const listItem = document.createElement('li');
+                                listItem.textContent = item;
+                                historyList.appendChild(listItem);
+                            });
+                            historyList.scrollTop = historyList.scrollHeight;
+                            audioElement.onended = () => {
+                                recordingIndicator.style.display = 'block';
+                                setTimeout(() => {
+                                    recordingIndicator.style.display = 'none';
+                                    setTimeout(() => {
+                                        processingIndicator.style.display = 'block';
+                                        setTimeout(() => {
+                                                processingIndicator.style.display = 'none';
+                                            }, 3000);
+                                        }, 2000);
+                                    }, 5000);
+                                };
+                            }
+                        } catch (error) {
+                            console.error('处理音频请求失败', error);
+                        }
+                    });
+                    audioChunks = [];
                 };
-    
-                // 清理
-                stream.getTracks().forEach(track => track.stop());
-            } catch (error) {
-                console.error('录音或发送失败:', error);
-                alert('录音或发送失败，请检查控制台了解详情。');
-            }
-        });
-    
-        socket.on('response', function(data) {
-            const audioBase64 = data.audio_64;
-            const audioBytes = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
-            const audioBlob = new Blob([audioBytes], { type: 'audio/mp3' });
-            const audioUrl = URL.createObjectURL(audioBlob);
-            audioElement.src = audioUrl;
-            audioElement.volume = 0;
-            audioElement.play();
-            audioElement.onplay = () => {
-                talk(model4, audioUrl);
-            };
-    
-            const historyList = document.getElementById('conversation-history');
-            historyList.innerHTML = '';
-            customerElement.textContent = 'Customer';
-            ATM_tellerElement.textContent = 'AI-Agent';
-            data.conversation_history.forEach(item => {
-                const listItem = document.createElement('li');
-                listItem.textContent = item;
-                historyList.appendChild(listItem);
-            });
-            historyList.scrollTop = historyList.scrollHeight;
-            audioElement.onended = () => {
-                recordingIndicator.style.display = 'block';
-                setTimeout(() => {
-                    recordingIndicator.style.display = 'none';
-                    setTimeout(() => {
-                        processingIndicator.style.display = 'block';
+                language_select.volume = 0;
+                language_select.play();
+                language_select.onplay = () => {
+                    if (model4) {
+                        model4.motion('TapBody');
+                        talk(model4, "language_select.mp3");
+                    }
+                };
+                language_select.onended = () => {
+                    if (mediaRecorder) {
+                        mediaRecorder.start();
+                        recordingIndicator.style.display = 'block';
                         setTimeout(() => {
-                            processingIndicator.style.display = 'none';
-                        }, 3000);
-                    }, 2000);
-                }, 5000);
-            };
+                            mediaRecorder.stop();
+                            recordingIndicator.style.display = 'none';
+                            setTimeout(() => {
+                                processingIndicator.style.display = 'block';
+                                setTimeout(() => {
+                                    processingIndicator.style.display = 'none';
+                                }, 3000);
+                            }, 2000);
+                        }, 5000);
+                    }
+                };
+            })
+            .catch(error => console.error('权限获取失败', error));
         });
-    
         function talk(model, audio) {
             var audio_link = audio;
             var volume = 1;
