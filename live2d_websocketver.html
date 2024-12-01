@@ -212,27 +212,39 @@
                                 historyList.appendChild(listItem);
                             });
                             historyList.scrollTop = historyList.scrollHeight;
+                            const should_record = data.should_record;
                             audioElement.onended = () => {
                                 audioChunks = [];
-                                mediaRecorder.start();
-                                recordingIndicator.style.display = 'block';
-                                setTimeout(() => {
-                                    mediaRecorder.stop();
-                                    recordingIndicator.style.display = 'none';
+                                if (should_record) {
+                                    mediaRecorder.start();
+                                    recordingIndicator.style.display = 'block';
                                     setTimeout(() => {
-                                        processingIndicator.style.display = 'block';
+                                        mediaRecorder.stop();
+                                        recordingIndicator.style.display = 'none';
                                         setTimeout(() => {
+                                            processingIndicator.style.display = 'block';
+                                            setTimeout(() => {
                                                 processingIndicator.style.display = 'none';
                                             }, 3000);
                                         }, 2000);
                                     }, 5000);
-                                };
+                                } else {
+                                    console.log('waiting for next audio');
+                                    const audioBlob = new Blob(audioChunks);
+                                    const reader = new FileReader();
+                                    reader.readAsDataURL(audioBlob);
+                                    reader.onloadend = () => {
+                                        const base64Audio = reader.result.split(',')[1];
+                                        socket.emit('process_audio', { audio: base64Audio });
+                                    };
+                                }
                             }
-                        catch (error) {console.error('处理音频请求失败', error)};
+                        } catch (error) {console.error('处理音频请求失败', error)};
                     
-                    audioChunks = [];
-                    });
-                };
+                            audioChunks = [];
+                        });
+                    };
+                
                 language_select.volume = 0;
                 language_select.play();
                 language_select.onplay = () => {
