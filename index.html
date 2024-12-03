@@ -1,168 +1,291 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <meta charset="UTF-8">
+    <title>录音并处理与Live2D交互</title>
     <script src="./js/live2dcubismcore.min.js"></script>
     <script src="./js/live2d.min.js"></script>
     <script src="./js/pixi.min.js"></script>
-
-    <!-- if only Cubism 4 support-->
     <script src="./js/cubism4.min.js"></script>
     <script src="./js/jquery-3.1.1.min.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-    <title>live2dSpeek</title>
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #record-btn {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2;
+        }
+        #recording-indicator, #processing-indicator {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            display: none;
+        }
+        #recording-indicator { color: red; z-index: 2; }
+        #processing-indicator { color: blue; z-index: 2; }
+        #customer, #ATM_teller {
+            position: absolute;
+            top: 10px;
+            margin-bottom: 20px;
+            z-index: 2;
+        }
+        #customer { right: 10px; color: #006400; z-index: 2; }
+        #ATM_teller { left: 10px; color: #8b0000; z-index: 2; }
+        #conversation-history {
+            list-style-type: none;
+            max-height: 600px;
+            overflow-y: auto;
+            margin-top: 60px;
+            padding: 0;
+            z-index: 2;
+        }
+        #conversation-history li {
+            clear: both;
+            max-width: 70%;
+            width: max-content;
+            margin-bottom: 5px;
+            padding: 8px;
+            border-radius: 10px;
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+            margin-top: 10px;
+            z-index: 2;
+            position: relative;
+        }
+        #conversation-history li:nth-child(odd) {
+            float: right;
+            background-color: #90EE90;
+            color: #000000;
+            z-index: 2;
+        }
+        #conversation-history li:nth-child(even) {
+            float: left;
+            background-color: #FFF8DC;
+            color: #000000;
+            z-index: 2;
+        }
+        .container {
+            position: relative;
+            height: 100vh; /* 使用视口高度，确保容器填满整个屏幕 */
+        }
+        
+        .chat-container {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 66.67%; /* 占据左侧三分之二 */
+            height: 100%; /* 充满整个容器的高度 */
+            overflow-y: auto;
+            padding: 10px;
+            box-shadow: 5px 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 2;
+        }
+        
+        .live2d-container {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 33.33%; /* 占据右侧三分之一 */
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            z-index: 1;
+        }
+        .live2d-container canvas {
+            width: 1000px;
+            height: 500px;
+            max-width: 190%; /* 确保 canvas 不超出其容器 */
+            max-height: 100%; /* 确保 canvas 不超出其容器 */
+            position: relative; /* 相对定位 */
+            z-index: 1;
+        }
+    </style>
 </head>
-
 <body>
-<canvas id=canvas></canvas>
-<div id="control">
-    <div class="label">1、测试说话</div>
-    <button id="play">测试音频</button>
-    <br/><br/>
-    <div class="label">2、调用接口生成音频</div>
-    <textarea id="text" style="width:400px;height:300px;">你好，欢迎光临</textarea>
-    <br/><br/>
-    <button id="start">开始说话</button>
-</div>
-
-<script type="text/javascript">
-    // 数字人模型
-    // const cubism4Model = "./assets/kei_vowels_pro/kei_vowels_pro.model3.json";
-    // const cubism4Model = "./assets/Hiyori/Hiyori.model3.json";
-    // const cubism4Model = "./assets/March 7th/March 7th.model3.json";
-     const cubism4Model = "./assets/haru/haru_greeter_t03.model4.json";
-
-
-    const live2d = PIXI.live2d;
-    (async function main() {
+    <div class="container">
+        <div class="chat-container">
+            <p id="customer"></p>
+            <p id="ATM_teller"></p>
+            <ul id="conversation-history"></ul>
+            <button id="record-btn">Launch</button>
+            <p id="recording-indicator">Recording...</p>
+            <p id="processing-indicator">Processing...</p>
+        </div>
+        <div class="live2d-container">
+            <canvas id="canvas" width="1200" height="1600"></canvas>
+        </div>
+    </div>
+    <audio id="language_select">
+    <source src="language_select.mp3" type="audio/mpeg">
+    您的浏览器不支持 audio 元素。
+    </audio>
+    <audio id="audio"></audio>
+    <script type="text/javascript">
         const app = new PIXI.Application({
             view: document.getElementById("canvas"),
             autoStart: true,
             resizeTo: window,
-            backgroundColor: 0x333333
+            backgroundColor: 0xffffff
         });
-
-        const models = await Promise.all([
-            live2d.Live2DModel.from(cubism4Model)
-        ]);
-
-        models.forEach((model) => {
-            app.stage.addChild(model);
-
-            const scaleX = (innerWidth) / model.width;
-            const scaleY = (innerHeight) / model.height;
-
-            // fit the window
-            model.scale.set(0.4);
-            model.y = innerHeight * 0.1;
-            draggable(model);
-        });
-
-        const model4 = models[0];
-        console.log(innerWidth)
-        // model4.x = innerWidth / 2;
-        // 居中显示
-        model4.x = (innerWidth - model4.width) / 2;
-
-        model4.on("hit", (hitAreas) => {
-            if (hitAreas.includes("Body")) {
-                model4.motion("Tap");
+        const live2d = PIXI.live2d;
+        const cubism4Model = "assets/haru/haru_greeter_t03.model4.json";
+        let model4;
+    
+        (async function loadModel() {
+            model4 = await live2d.Live2DModel.from(cubism4Model);
+            app.stage.addChild(model4);
+            const scale = 0.75;  // 增加这个值来放大模型
+            model4.scale.set(scale);
+        
+            // 计算模型居中位置
+            model4.x = (app.screen.width - model4.internalModel.originalWidth * scale) / 4;
+            model4.y = (app.screen.height - model4.internalModel.originalHeight * scale) / 36;
+        })();
+    
+        const socket = io('http://localhost:5001');
+        const recordBtn = document.getElementById('record-btn');
+        const audioElement = document.getElementById('audio');
+        const customerElement = document.getElementById('customer');
+        const ATM_tellerElement = document.getElementById('ATM_teller');
+        const recordingIndicator = document.getElementById('recording-indicator');
+        const language_select = document.getElementById('language_select');
+        const processingIndicator = document.getElementById('processing-indicator');
+        const conversationHistoryElement = document.getElementById('conversation-history');
+    
+        recordBtn.addEventListener('click', async () => {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('浏览器不支持 mediaDevices API，请使用支持的浏览器或检查浏览器设置。');
+                return;
             }
-
-            if (hitAreas.includes("Head")) {
-                model4.expression();
-            }
-        });
-
-
-        $("#play").click(function () {
-            talk(model4, "language_select.mp3");
-        });
-
-        $("#start").click(function () {
-            let text = $("#text").val().trim();
-            if (text == "") {
-                alert("请输入内容");
-                return false;
-            }
-            $("#start").prop("disabled", true);
-            axios.post("http://127.0.0.1:5001/process_audio", { audio: text })
-            .then(response => {
-                const audioData = response.data.audio;
-                if (audioData) {
-                    const audioUrl = "data:audio/mp3;base64," + audioData;
-                    talk(model4, audioUrl);
-                } else {
-                    alert(response.data.text); // 显示错误或者提示信息
-                }
-                $("#start").prop("disabled", false);
+    
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                const mediaRecorder = new MediaRecorder(stream);
+                let audioChunks = [];
+    
+                mediaRecorder.ondataavailable = e => {
+                    audioChunks.push(e.data);
+                };
+    
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks);
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = () => {
+                        const base64Audio = reader.result.split(',')[1];
+                        socket.emit('process_audio', { audio: base64Audio });
+                    };
+                    socket.off('response');
+                    socket.on('response', function(data) {
+                        try {
+                            const audioBase64 = data.audio_64;
+                            const audioBytes = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+                            const audioBlob = new Blob([audioBytes], { type: 'audio/mp3' });
+                            const audioUrl = URL.createObjectURL(audioBlob);
+                            audioElement.src = audioUrl;
+                            audioElement.volume = 0;
+                            audioElement.play();
+                            audioElement.onplay = () => {
+                                talk(model4, audioUrl);
+                            };
+                
+                            const historyList = document.getElementById('conversation-history');
+                            historyList.innerHTML = '';
+                            customerElement.textContent = 'Customer';
+                            ATM_tellerElement.textContent = 'AI-Agent';
+                            data.conversation_history.forEach(item => {
+                                const listItem = document.createElement('li');
+                                listItem.textContent = item;
+                                historyList.appendChild(listItem);
+                            });
+                            historyList.scrollTop = historyList.scrollHeight;
+                            const should_record = data.should_record;
+                            audioElement.onended = () => {
+                                audioChunks = [];
+                                if (should_record) {
+                                    mediaRecorder.start();
+                                    recordingIndicator.style.display = 'block';
+                                    setTimeout(() => {
+                                        mediaRecorder.stop();
+                                        recordingIndicator.style.display = 'none';
+                                        setTimeout(() => {
+                                            processingIndicator.style.display = 'block';
+                                            setTimeout(() => {
+                                                processingIndicator.style.display = 'none';
+                                            }, 3000);
+                                        }, 2000);
+                                    }, 5000);
+                                } else {
+                                    console.log('waiting for next audio');
+                                    const audioBlob = new Blob(audioChunks);
+                                    const reader = new FileReader();
+                                    reader.readAsDataURL(audioBlob);
+                                    reader.onloadend = () => {
+                                        const base64Audio = reader.result.split(',')[1];
+                                        socket.emit('process_audio', { audio: base64Audio });
+                                    };
+                                }
+                            }
+                        } catch (error) {console.error('处理音频请求失败', error)};
+                    
+                            audioChunks = [];
+                        });
+                    };
+                
+                language_select.volume = 0;
+                language_select.play();
+                language_select.onplay = () => {
+                    if (model4) {
+                        model4.motion('TapBody');
+                        talk(model4, "language_select.mp3");
+                    }
+                };
+                language_select.onended = () => {
+                    if (mediaRecorder) {
+                        mediaRecorder.start();
+                        recordingIndicator.style.display = 'block';
+                        setTimeout(() => {
+                            mediaRecorder.stop();
+                            recordingIndicator.style.display = 'none';
+                            setTimeout(() => {
+                                processingIndicator.style.display = 'block';
+                                setTimeout(() => {
+                                    processingIndicator.style.display = 'none';
+                                }, 3000);
+                            }, 2000);
+                        }, 5000);
+                    }
+                };
             })
-                .catch(error => {
-                    console.error('请求接口失败:', error);
-                    $("#start").prop("disabled", false);
-                });
+            .catch(error => console.error('权限获取失败', error));
         });
-
-
-    })();
-
-
-    function talk(model, audio) {
-        var audioElement = new Audio(audio);
-        audioElement.play();
-        var audio_link = audio;  //[Optional arg, can be null or empty] [relative or full url path] [mp3 or wav file] "./Keira.wav"
-        var volume = 1; // [Optional arg, can be null or empty] [0.0 - 1.0]
-        var expression = 8; // [Optional arg, can be null or empty] [index|name of expression]
-        var resetExpression = true; // [Optional arg, can be null or empty] [true|false] [default: true] [if true, expression will be reset to default after animation is over]
-        var crossOrigin = "anonymous"; // [Optional arg, to use not same-origin audios] [DEFAULT: null]
-
-        model.speak(audio_link, {
-            volume: volume,
-            expression: expression,
-            resetExpression: resetExpression,
-            crossOrigin: crossOrigin
-        })
-        model.speak(audio_link)
-        model.speak(audio_link, {volume: volume})
-        model.speak(audio_link, {expression: expression, resetExpression: resetExpression})
-
-    }
-
-
-    function draggable(model) {
-        model.buttonMode = true;
-        model.on("pointerdown", (e) => {
-            model.dragging = true;
-            model._pointerX = e.data.global.x - model.x;
-            model._pointerY = e.data.global.y - model.y;
-        });
-        model.on("pointermove", (e) => {
-            if (model.dragging) {
-                model.position.x = e.data.global.x - model._pointerX;
-                model.position.y = e.data.global.y - model._pointerY;
-            }
-        });
-        model.on("pointerupoutside", () => (model.dragging = false));
-        model.on("pointerup", () => (model.dragging = false));
-    }
-
-</script>
-
-
-<style>
-    #control {
-        position: absolute;
-        top: 50px;
-        left: 50px;
-        color: #ffffff;
-        font-size: 18px;
-    }
-
-    .label {
-        font-size: 32px;
-        font-weight: 800;
-    }
-</style>
-
+        function talk(model, audio) {
+            var audio_link = audio;
+            var volume = 1;
+            var expression = 8;
+            var resetExpression = false;
+            var crossOrigin = "anonymous";
+    
+            model.speak(audio_link, {
+                volume: volume,
+                expression: expression,
+                resetExpression: resetExpression,
+                crossOrigin: crossOrigin
+            });
+        }
+    </script>
 </body>
 </html>
