@@ -134,6 +134,11 @@
     </audio>
     <audio id="audio"></audio>
     <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function() {
+                console.log('Connected to server');
+                // 页面加载完成并连接到服务器后，发送消息
+                infoSocket.emit('AI-Agent-ready', { message: 'AI Agent is ready' });
+        });
         const app = new PIXI.Application({
             view: document.getElementById("canvas"),
             autoStart: true,
@@ -154,8 +159,9 @@
             model4.x = (app.screen.width - model4.internalModel.originalWidth * scale) / 4;
             model4.y = (app.screen.height - model4.internalModel.originalHeight * scale) / 36;
         })();
-    
-        const socket = io('http://localhost:5001');
+
+        const infoSocket = io('http://localhost:5002');
+        const backendSocket = io('http://localhost:5001');
         const recordBtn = document.getElementById('record-btn');
         const audioElement = document.getElementById('audio');
         const customerElement = document.getElementById('customer');
@@ -165,12 +171,88 @@
         const processingIndicator = document.getElementById('processing-indicator');
         const conversationHistoryElement = document.getElementById('conversation-history');
     
+        // 假设后端连接为 backendSocket，信息端连接为 infoSocket
+        //const infoSocket = io('http://localhost:5002');     // 信息端Socket.IO连接
+
+        // 接收来自后端的请求并转发到信息端
+
+        backendSocket.on('note-mix', function(data) {
+            console.log('note-mix', data);
+            infoSocket.emit('note-mix', data);
+        });
+
+        infoSocket.on('note-mix-response', function(data) {
+            console.log('note-mix-response', data);
+            backendSocket.emit('note-mix-response', data);
+        });
+
+        backendSocket.on('cash-withdrawal', function(data) {
+            console.log(data.action);
+            console.log('time', new Date().toISOString());
+            infoSocket.emit('cash-withdrawal', data);
+            console.log('time', new Date().toISOString());
+        });
+
+        infoSocket.on('cash-withdrawal-response', function(data) {
+            console.log('time', new Date().toISOString());
+            backendSocket.emit('cash-withdrawal-response', data);
+        });
+
+        let eventQueue = [];
+        let isProcessing = false;
+
+        infoSocket.on('event', function(data) {
+            console.log('event receive time',data, new Date().toISOString())
+            eventQueue.push(data);
+            processQueue();
+        });
+
+        infoSocket.on('end-transaction', function(data) {
+            eventQueue.push(data);
+            processQueue();
+        });
+
+        function processQueue() {
+            if (isProcessing || eventQueue.length === 0) {
+                return;
+            }
+        
+            isProcessing = true;
+            const data = eventQueue.shift();
+        
+            // 模拟随机延迟
+            const delay = 1000; // 1秒的延迟
+        
+            setTimeout(() => {
+                if (data.action === 'event') {
+                    backendSocket.emit('event', data);
+                    console.log('event emit time', data, new Date().toISOString());
+                } else if (data.action === 'end-transaction') {
+                    backendSocket.emit('end-transaction', data);
+                    console.log('end-transaction emit time', new Date().toISOString());
+                }
+                isProcessing = false;
+                processQueue(); // 处理下一个事件
+            }, delay);
+        }
+
+
+
+        backendSocket.on('close-session', function(data) {
+            infoSocket.emit('close-session', data);
+        });
+
+
+        infoSocket.on('AI-Agent-ready-response', function(data) {
+            console.log(data.message);
+        });
+
         recordBtn.addEventListener('click', async () => {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 alert('浏览器不支持 mediaDevices API，请使用支持的浏览器或检查浏览器设置。');
                 return;
             }
-    
+            
             navigator.mediaDevices.getUserMedia({ audio: true })
                 .then(stream => {
                 const mediaRecorder = new MediaRecorder(stream);
@@ -186,10 +268,10 @@
                     reader.readAsDataURL(audioBlob);
                     reader.onloadend = () => {
                         const base64Audio = reader.result.split(',')[1];
-                        socket.emit('process_audio', { audio: base64Audio });
+                        backendSocket.emit('process_audio', { audio: base64Audio });
                     };
-                    socket.off('response');
-                    socket.on('response', function(data) {
+                    backendSocket.off('response');
+                    backendSocket.on('response', function(data) {
                         try {
                             const audioBase64 = data.audio_64;
                             const audioBytes = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
@@ -213,9 +295,50 @@
                             });
                             historyList.scrollTop = historyList.scrollHeight;
                             const should_record = data.should_record;
+                            const session_close = data.session_close;
                             audioElement.onended = () => {
                                 audioChunks = [];
-                                if (should_record) {
+                                if (session_close) {
+                                    const overlay = document.createElement('div');
+                                    overlay.style.cssText = `
+                                        position: fixed;
+                                        top: 0;
+                                        left: 0;
+                                        width: 100%;
+                                        height: 100%;
+                                        background: rgba(0, 0, 0, 0.7);
+                                        z-index: 9999;
+                                        display: flex;
+                                        justify-content: center;
+                                        align-items: center;
+                                        flex-direction: column;
+                                    `;
+                                    
+                                    const message = document.createElement('div');
+                                    message.style.cssText = `
+                                        color: white;
+                                        font-size: 24px;
+                                        margin-bottom: 20px;
+                                    `;
+                                    message.textContent = 'Session Ended';
+                                    
+                                    const subMessage = document.createElement('div');
+                                    subMessage.style.cssText = `
+                                        color: white;
+                                        font-size: 16px;
+                                    `;
+                                    subMessage.textContent = 'Please refresh the page to start a new session';
+                                    
+                                    overlay.appendChild(message);
+                                    overlay.appendChild(subMessage);
+                                    document.body.appendChild(overlay);
+                                    
+                                    // 禁用所有交互
+                                    document.body.style.pointerEvents = 'none';
+                                    
+                                    // 移除所有socket监听器
+                                    backendSocket.removeAllListeners();
+                                } else if (should_record) {
                                     mediaRecorder.start();
                                     recordingIndicator.style.display = 'block';
                                     setTimeout(() => {
@@ -235,7 +358,7 @@
                                     reader.readAsDataURL(audioBlob);
                                     reader.onloadend = () => {
                                         const base64Audio = reader.result.split(',')[1];
-                                        socket.emit('process_audio', { audio: base64Audio });
+                                        backendSocket.emit('process_audio', { audio: base64Audio });
                                     };
                                 }
                             }
