@@ -160,8 +160,8 @@
             model4.y = (app.screen.height - model4.internalModel.originalHeight * scale) / 36;
         })();
 
-        const infoSocket = io('https://4de72066.r9.cpolar.top');
-        const backendSocket = io('https://1cbdb07.r9.cpolar.top');
+        const infoSocket = io('ws://localhost:19500/atm-server');
+        const backendSocket = io('https://5460aefb.r9.cpolar.top');
         const recordBtn = document.getElementById('record-btn');
         const audioElement = document.getElementById('audio');
         const customerElement = document.getElementById('customer');
